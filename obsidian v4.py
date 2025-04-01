@@ -19,18 +19,20 @@ class InteractiveNode(QGraphicsEllipseItem):
         self.graph_viewer = graph_viewer
         self.setBrush(QBrush(Qt.GlobalColor.blue))
         self.setAcceptHoverEvents(True)
+        self.edges = []  # Store edges connected to this node
 
     def hoverEnterEvent(self, event):
-        """Show tooltip on hover."""
+        """Highlight node and its edges on hover."""
+        self.setBrush(QBrush(Qt.GlobalColor.red))  # Change node color
+        for edge in self.edges:
+            edge.setPen(QPen(Qt.GlobalColor.red, 2))  # Highlight edges
         QToolTip.showText(event.screenPos(), self.name)
 
-    def mousePressEvent(self, event):
-        """Open file when node is clicked."""
-        file_path = self.graph_viewer.get_file_path(self.name)
-        if isinstance(file_path, str) and os.path.exists(file_path):
-            os.startfile(file_path)  # Open file in default editor
-        else:
-            print(f"⚠️ No file found for {self.name}")
+    def hoverLeaveEvent(self, event):
+        """Restore node and edge colors when hover ends."""
+        self.setBrush(QBrush(Qt.GlobalColor.blue))  # Restore node color
+        for edge in self.edges:
+            edge.setPen(QPen(Qt.GlobalColor.gray, 1))
 
 class GraphViewer(QGraphicsView):
     """Graph Viewer with interactive nodes and force-directed layout."""
@@ -69,30 +71,34 @@ class GraphViewer(QGraphicsView):
         """Update force layout settings and redraw the graph."""
         self.center_force = center / 100.0
         self.link_force = link / 100.0
-        self.link_distance = distance / 100.0
+        self.link_distance = distance / 10.0
         self.repel_force = repel / 100.0
         self.draw_graph()
 
     def draw_graph(self):
         """Draws the network graph with force-directed layout."""
         self.scene.clear()
+        self.nodes.clear()
+        self.edges.clear()
 
         # Apply force-directed layout
         pos = nx.spring_layout(
             self.graph,
             center=(0, 0),
-            k=self.link_distance / 1000,  # Link distance control
+            k=self.link_distance / 1000,
             scale=500,
-            iterations=int(self.repel_force * 10)  # Repel force effect
+            iterations=int(self.repel_force * 10)
         )
 
         # Draw edges
+        edge_items = {}
         for edge in self.graph.edges:
             p1 = pos[edge[0]]
             p2 = pos[edge[1]]
             line = QGraphicsLineItem(p1[0] * 10, p1[1] * 10, p2[0] * 10, p2[1] * 10)
             line.setPen(QPen(Qt.GlobalColor.gray, 1))
             self.scene.addItem(line)
+            edge_items[edge] = line
 
         # Draw nodes
         for node, (x, y) in pos.items():
@@ -103,6 +109,11 @@ class GraphViewer(QGraphicsView):
             self.scene.addItem(node_item)
             self.scene.addItem(text)
             self.nodes[node] = node_item
+
+        # Link nodes to their edges for highlighting
+        for edge, line in edge_items.items():
+            self.nodes[edge[0]].edges.append(line)
+            self.nodes[edge[1]].edges.append(line)
 
     def get_file_path(self, node_name):
         """Retrieve the file path for a node (if it's a file)."""
@@ -138,7 +149,7 @@ class ObsidianGraphApp(QMainWindow):
         # Force Control Sliders
         self.center_slider = self.create_slider(0, 100, 10, "Center Force")
         self.link_slider = self.create_slider(0, 100, 50, "Link Force")
-        self.distance_slider = self.create_slider(50, 500, 300, "Link Distance")
+        self.distance_slider = self.create_slider(1, 50, 30, "Link Distance")
         self.repel_slider = self.create_slider(0, 100, 10, "Repel Force")
 
         # Connect slider updates
