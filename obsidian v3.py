@@ -1,18 +1,53 @@
-import sys
 import os
 import re
 import networkx as nx
-from pyvis.network import Network
-from PyQt6.QtWidgets import QApplication, QMainWindow, QFileDialog, QPushButton, QVBoxLayout, QWidget, QLineEdit, QLabel
-from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import QUrl
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QFileDialog, QPushButton, 
+    QVBoxLayout, QWidget, QLineEdit, QLabel, QGraphicsScene, QGraphicsView,
+    QGraphicsEllipseItem, QGraphicsTextItem, QGraphicsLineItem
+)
+from PyQt6.QtGui import QBrush, QPen
+from PyQt6.QtCore import Qt
+
+class GraphViewer(QGraphicsView):
+    def __init__(self):
+        super().__init__()
+        self.scene = QGraphicsScene()
+        self.setScene(self.scene)
+        self.graph = nx.Graph()
+        self.nodes = {}
+
+    def draw_graph(self):
+        """Draws the network graph in the PyQt UI."""
+        self.scene.clear()
+        pos = nx.spring_layout(self.graph)  # Compute node positions
+
+        # Draw edges
+        for edge in self.graph.edges:
+            p1 = pos[edge[0]]
+            p2 = pos[edge[1]]
+            line = QGraphicsLineItem(p1[0] * 500, p1[1] * 500, p2[0] * 500, p2[1] * 500)
+            line.setPen(QPen(Qt.GlobalColor.gray, 1))
+            self.scene.addItem(line)
+
+        # Draw nodes
+        for node, (x, y) in pos.items():
+            ellipse = QGraphicsEllipseItem(x * 500 - 5, y * 500 - 5, 10, 10)
+            ellipse.setBrush(QBrush(Qt.GlobalColor.blue))
+            text = QGraphicsTextItem(node)
+            text.setPos(x * 500 + 8, y * 500)
+
+            self.scene.addItem(ellipse)
+            self.scene.addItem(text)
+            self.nodes[node] = ellipse
 
 class ObsidianGraphApp(QMainWindow):
     def __init__(self):
         super().__init__()
 
         self.vault_path = None  # Store selected vault path
-        self.graph = nx.Graph()  # Graph object
+        self.graph_viewer = GraphViewer()  # Custom graph viewer
+        self.graph = self.graph_viewer.graph  # Access graph structure
         self.initUI()
 
     def initUI(self):
@@ -37,15 +72,12 @@ class ObsidianGraphApp(QMainWindow):
         self.graph_btn = QPushButton("Generate Graph", self)
         self.graph_btn.clicked.connect(self.generate_graph)
 
-        # WebView to show the HTML Graph
-        self.web_view = QWebEngineView(self)
-
         # Add widgets to layout
         layout.addWidget(self.label)
         layout.addWidget(self.vault_btn)
         layout.addWidget(self.search_bar)
         layout.addWidget(self.graph_btn)
-        layout.addWidget(self.web_view)  # Embed graph in GUI
+        layout.addWidget(self.graph_viewer)  # Add the native graph viewer
 
         # Set central widget
         container = QWidget()
@@ -85,13 +117,13 @@ class ObsidianGraphApp(QMainWindow):
                     tags, links = self.extract_metadata(file_path)
 
                     # Add file node
-                    self.graph.add_node(file, label=file, color="lightblue")
+                    self.graph.add_node(file, label=file)
                     files[file] = {"tags": tags, "links": links}
 
                     # Add tag relations
                     for tag in tags:
                         tag_node = f"#{tag}"
-                        self.graph.add_node(tag_node, label=tag, color="green")
+                        self.graph.add_node(tag_node, label=tag)
                         self.graph.add_edge(file, tag_node)
 
         # Add file-to-file links
@@ -99,20 +131,12 @@ class ObsidianGraphApp(QMainWindow):
             for link in data["links"]:
                 linked_file = f"{link}.md"
                 if linked_file in files:  # Ensure linked file exists
-                    self.graph.add_edge(file, linked_file, color="gray")
+                    self.graph.add_edge(file, linked_file)
 
     def generate_graph(self):
-        """Creates and displays an interactive HTML graph inside the app."""
+        """Creates and renders the interactive graph inside PyQt."""
         self.build_graph()
-
-        net = Network(notebook=False, cdn_resources="local")  # Use local JS
-        net.from_nx(self.graph)
-
-        graph_html = "graph.html"
-        net.write_html(graph_html)
-
-        # Load in PyQt WebEngineView
-        self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(graph_html)))
+        self.graph_viewer.draw_graph()  # Render inside PyQt
 
     def update_graph(self):
         """Filters the graph based on search input."""
@@ -129,17 +153,11 @@ class ObsidianGraphApp(QMainWindow):
                     filtered_graph.add_node(neighbor, **self.graph.nodes[neighbor])
                     filtered_graph.add_edge(node, neighbor, **self.graph[node][neighbor])
 
-        net = Network(notebook=False, cdn_resources="local")  # Use local JS
-        net.from_nx(filtered_graph)
-
-        filtered_graph_html = "filtered_graph.html"
-        net.write_html(filtered_graph_html)
-
-        # Load in PyQt WebEngineView
-        self.web_view.setUrl(QUrl.fromLocalFile(os.path.abspath(filtered_graph_html)))
+        self.graph_viewer.graph = filtered_graph
+        self.graph_viewer.draw_graph()
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)  # ✅ Fix: Pass sys.argv to QApplication
+    app = QApplication([])
     window = ObsidianGraphApp()
     window.show()
-    sys.exit(app.exec())  # ✅ Fix: Properly handle app exit
+    app.exec()
