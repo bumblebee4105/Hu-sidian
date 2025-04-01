@@ -7,4 +7,7 @@ it creates a webpage with the graph of you vault.
 The Obsidian v2.py file is version 2. it creates a simple GUI for users to select their directory and is able to find files in sub-directories.
 it creates a webpage with the graph of you vault.
 
-The Obsidian v3.py file is version 3 and is still in development. the goal is to have the graph be rendered in the GUI itself and not in a webpage.
+The Obsidian v3.py file is version 3 and is the first to have a local gui instead of a web rendered one.
+
+The Obsidian v4.py file is version 4 and has a locally generated gui. 
+users can zoom in and out, move trough the graph and change graph forces like how users can do in the real Obsidian.
