@@ -10,6 +10,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QBrush, QPen, QPainter
 from PyQt6.QtCore import Qt
 
+DISTANCE_MULTIPLIER = 1
+
 class InteractiveNode(QGraphicsEllipseItem):
     """Custom node class to handle interactions like hover and click."""
     
@@ -71,7 +73,7 @@ class GraphViewer(QGraphicsView):
         """Update force layout settings and redraw the graph."""
         self.center_force = center / 100.0
         self.link_force = link / 100.0
-        self.link_distance = distance / 10.0
+        self.link_distance = distance / 20.0
         self.repel_force = repel / 100.0
         self.draw_graph()
 
@@ -95,16 +97,16 @@ class GraphViewer(QGraphicsView):
         for edge in self.graph.edges:
             p1 = pos[edge[0]]
             p2 = pos[edge[1]]
-            line = QGraphicsLineItem(p1[0] * 10, p1[1] * 10, p2[0] * 10, p2[1] * 10)
+            line = QGraphicsLineItem(p1[0] * DISTANCE_MULTIPLIER, p1[1] * DISTANCE_MULTIPLIER, p2[0] * DISTANCE_MULTIPLIER, p2[1] * DISTANCE_MULTIPLIER)
             line.setPen(QPen(Qt.GlobalColor.gray, 1))
             self.scene.addItem(line)
             edge_items[edge] = line
 
         # Draw nodes
         for node, (x, y) in pos.items():
-            node_item = InteractiveNode(node, self, x * 10, y * 10)
+            node_item = InteractiveNode(node, self, x * DISTANCE_MULTIPLIER, y * DISTANCE_MULTIPLIER)
             text = QGraphicsTextItem(node)
-            text.setPos(x * 10 + 8, y * 10)
+            text.setPos(x * DISTANCE_MULTIPLIER + 8, y * DISTANCE_MULTIPLIER)
 
             self.scene.addItem(node_item)
             self.scene.addItem(text)
