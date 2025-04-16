@@ -60,7 +60,16 @@ class VaultChangeHandler(FileSystemEventHandler):
         if event.is_directory or not event.src_path.endswith(".md"):
             return
         self.app.handle_file_change(event.src_path)
-
+    
+    def on_deleted(self, event):
+        if event.is_directory or not event.src_path.endswith(".md"):
+            return
+        self.app.handle_file_change(event.src_path)
+        
+    def on_moved(self, event):
+        if event.is_directory or not event.src_path.endswith(".md"):
+            return
+        self.app.handle_file_change(event.src_path)
 
 class InteractiveNode(QGraphicsEllipseItem):
     def __init__(self, name, graph_viewer, x, y):
