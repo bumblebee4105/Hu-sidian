@@ -11,6 +11,10 @@ from PyQt6.QtGui import QBrush, QPen, QPainter, QColor
 from PyQt6.QtCore import Qt, QTimer
 import math
 import random
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+import threading
+
 
 DISTANCE_MULTIPLIER = 10
 
@@ -42,6 +46,21 @@ def obsidian_dark_theme():
             border: none;
         }
     """
+
+class VaultChangeHandler(FileSystemEventHandler):
+    def __init__(self, app):
+        self.app = app
+
+    def on_modified(self, event):
+        if event.is_directory or not event.src_path.endswith(".md"):
+            return
+        self.app.handle_file_change(event.src_path)
+
+    def on_created(self, event):
+        if event.is_directory or not event.src_path.endswith(".md"):
+            return
+        self.app.handle_file_change(event.src_path)
+
 
 class InteractiveNode(QGraphicsEllipseItem):
     def __init__(self, name, graph_viewer, x, y):
@@ -160,6 +179,9 @@ class GraphViewer(QGraphicsView):
         for node in self.nodes.values():
             if node.dragging:
                 continue
+            
+            if node.name not in self.graph:
+                continue
 
             fx, fy = 0, 0
 
@@ -244,20 +266,77 @@ class ObsidianGraphApp(QMainWindow):
         self.setStyleSheet(obsidian_dark_theme())
 
     def select_vault(self):
-        """Opens file dialog to select an Obsidian vault (folder)."""
         folder = QFileDialog.getExistingDirectory(self, "Select Vault Folder")
         if folder:
             self.vault_path = folder
             self.label.setText(f"Vault: {os.path.basename(folder)}")
+            self.build_graph()
+            self.graph_viewer.draw_graph()
+            self.start_watching_vault()  # 🔥 start watching for changes
+
+    def handle_file_change(self, file_path):
+        file_name = os.path.basename(file_path)
+        if not file_name.endswith(".md"):
+            return
+
+        # Step 1: Safely modify the graph data
+        if self.graph.has_node(file_name):
+            neighbors = list(self.graph.neighbors(file_name))
+            self.graph.remove_node(file_name)
+            for neighbor in neighbors:
+                if self.graph.degree(neighbor) == 0:
+                    self.graph.remove_node(neighbor)
+
+        tags, links = self.extract_metadata(file_path)
+        self.graph.add_node(file_name)
+
+        for tag in tags:
+            tag_node = f"#{tag}"
+            self.graph.add_edge(tag_node, file_name)
+            self.graph.add_edge(tag, file_name)
+
+        for link in links:
+            linked_file = f"{link}.md"
+            if linked_file != file_name:
+                self.graph.add_edge(file_name, linked_file)
+
+        # Step 2: Defer the GUI update to the Qt main thread
+        QTimer.singleShot(0, self.generate_graph)
+
+
+
+    def start_watching_vault(self):
+        if not self.vault_path:
+            return
+
+        self.observer = Observer()
+        self.event_handler = VaultChangeHandler(self)
+        self.observer.schedule(self.event_handler, self.vault_path, recursive=True)
+
+        thread = threading.Thread(target=self.observer.start, daemon=True)
+        thread.start()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'observer') and self.observer:
+            self.observer.stop()
+            self.observer.join()
+        super().closeEvent(event)
+
 
     def extract_metadata(self, file_path):
         """Extracts tags and wiki-style links from Markdown files."""
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except (PermissionError, FileNotFoundError):
+            # File is likely still being written or was moved/deleted
+            print(f"[WARN] Skipped file (unreadable): {file_path}")
+            return set(), set()
+    
         tags = set(re.findall(r'#(\w+)', content))
         links = set(re.findall(r'\[\[([^\]]+)\]\]', content))
         return tags, links
+
 
     def build_graph(self):
         """Scans .md files and builds a graph with relationships."""
